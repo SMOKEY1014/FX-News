@@ -1,5 +1,6 @@
+groq
 fredapi
 requests
-groq
 python-dotenv
 schedule
+flask

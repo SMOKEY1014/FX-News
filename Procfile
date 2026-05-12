@@ -1,1 +1,1 @@
-worker: python MacroNewsAgent.py
+web: python MacroNewsAgent.py

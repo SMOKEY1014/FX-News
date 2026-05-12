@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import requests
 from fredapi import Fred
-import anthropic
+from groq import Groq
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
@@ -35,7 +35,7 @@ TV_WEBHOOK_URL  = os.getenv("TV_WEBHOOK_URL")          # your TradingView webhoo
 TV_SECRET       = os.getenv("TV_ALERT_SECRET", "")
 
 fred   = Fred(api_key=FRED_API_KEY)
-client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # ─── EVENT REGISTRY ─────────────────────────────────────────────────────────
 # FRED series IDs + metadata for each tracked event
@@ -151,12 +151,12 @@ Respond ONLY with valid JSON, no markdown, no preamble:
 }}
 """
     try:
-        msg = client.messages.create(
-            model      = "claude-sonnet-4-20250514",
-            max_tokens = 400,
-            messages   = [{"role": "user", "content": prompt}],
+        msg = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
         )
-        raw  = msg.content[0].text.strip()
+        raw = msg.choices[0].message.content.strip()
         data = json.loads(raw)
         return data
     except Exception as e:

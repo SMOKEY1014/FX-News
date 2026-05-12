@@ -1,0 +1,5 @@
+fredapi
+requests
+anthropic
+python-dotenv
+schedule

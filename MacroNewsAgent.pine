@@ -1,0 +1,150 @@
+// ============================================================
+// MACRO NEWS AGENT INDICATOR  |  Pine Script v5
+// Displays CPI/NFP/FOMC event windows, historical vol zones,
+// and receives AI bias signals via webhook labels.
+// ============================================================
+//@version=5
+indicator("Macro News Agent", overlay=true, max_labels_count=100, max_lines_count=50)
+
+// ─── INPUTS ─────────────────────────────────────────────────
+grp_ev   = "Event Windows"
+grp_vol  = "Volatility Zones"
+grp_sig  = "Signal Display"
+
+show_window  = input.bool(true,  "Show pre/post event window",   group=grp_ev)
+window_bars  = input.int(15,     "Window bars each side",        group=grp_ev, minval=1, maxval=60)
+show_avg_vol = input.bool(true,  "Show avg move zone",          group=grp_vol)
+avg_move_pct = input.float(0.55, "Historical avg move %",       group=grp_vol, step=0.05)
+show_labels  = input.bool(true,  "Show signal labels",          group=grp_sig)
+label_offset = input.int(5,      "Label offset (bars above)",   group=grp_sig)
+
+// ─── COLORS ─────────────────────────────────────────────────
+col_bull   = color.new(#1D9E75, 0)
+col_bear   = color.new(#E24B4A, 0)
+col_neu    = color.new(#888780, 0)
+col_window = color.new(#378ADD, 88)
+col_zone_u = color.new(#1D9E75, 85)
+col_zone_d = color.new(#E24B4A, 85)
+col_vol_bg = color.new(#EF9F27, 90)
+
+// ─── WEBHOOK SIGNAL INPUTS ───────────────────────────────────
+// These are populated by your Python agent via TradingView alerts.
+// Use: Study → Add Alert → "External Signal" → Message = webhook payload
+// The agent pushes to a plot via Pine's input.source() trick,
+// OR you embed the verdict directly in the alert message label.
+//
+// For real webhook data: use a TradingView Premium webhook alert
+// that triggers a label plot. See MacroNewsAgent.py for the sender.
+//
+// Simulated signal for demonstration:
+signal_input = input.string("BEARISH_USD", "Manual override signal (or use webhook)",
+     options=["BULLISH_USD","BEARISH_USD","NEUTRAL","HIGH_VOL"])
+conf_input   = input.int(67, "Confidence %", minval=0, maxval=100)
+event_name   = input.string("CPI", "Event name", options=["CPI","NFP","FOMC","PPI","PCE"])
+
+// ─── EVENT TIME DETECTION ────────────────────────────────────
+// Mark bar where TradingView Economic Calendar event fires.
+// In live use, combine with TradingView built-in events (Settings > Events).
+// This highlights a manual anchor bar for back-testing windows.
+is_event_bar = input.bool(false, "Mark this bar as event bar (use in alert)")
+
+// ─── VOLATILITY ZONE ─────────────────────────────────────────
+// Draw ±avg_move_pct box around the close of the bar before the event.
+var float event_close  = na
+var int   event_bar_no = na
+
+if is_event_bar and show_avg_vol
+    event_close  := close[1]
+    event_bar_no := bar_index
+
+upper_zone = not na(event_close) ? event_close * (1 + avg_move_pct / 100) : na
+lower_zone = not na(event_close) ? event_close * (1 - avg_move_pct / 100) : na
+
+plot(upper_zone, "Upper Vol Zone", col_zone_u, 1, plot.style_linebr)
+plot(lower_zone, "Lower Vol Zone", col_zone_d, 1, plot.style_linebr)
+
+// ─── EVENT WINDOW BACKGROUND ─────────────────────────────────
+in_window = not na(event_bar_no) and
+     math.abs(bar_index - event_bar_no) <= window_bars
+
+bgcolor(show_window and in_window ? col_window : na, title="Event window")
+
+// ─── SIGNAL LABEL ────────────────────────────────────────────
+signal_color =
+     signal_input == "BULLISH_USD" ? col_bull :
+     signal_input == "BEARISH_USD" ? col_bear :
+     signal_input == "HIGH_VOL"    ? col_vol_bg : col_neu
+
+signal_arrow =
+     signal_input == "BULLISH_USD" ? "▲ " :
+     signal_input == "BEARISH_USD" ? "▼ " :
+     signal_input == "HIGH_VOL"    ? "⚡ " : "— "
+
+label_txt = signal_arrow + event_name + "  " + signal_input +
+     "\nConf: " + str.tostring(conf_input) + "%  |  Avg move: ±" +
+     str.tostring(avg_move_pct) + "%"
+
+if is_event_bar and show_labels
+    label.new(
+         bar_index,
+         high + (high * label_offset / 1000),
+         label_txt,
+         style    = label.style_label_down,
+         color    = signal_color,
+         textcolor= color.white,
+         size     = size.normal)
+
+// ─── VERTICAL EVENT LINE ─────────────────────────────────────
+if is_event_bar
+    line.new(bar_index, low  * 0.998,
+             bar_index, high * 1.002,
+             color=signal_color, width=2, style=line.style_dashed)
+
+// ─── PRE-EVENT VOLATILITY COMPRESSION ────────────────────────
+// Show ATR contraction in the run-up to the event (classic vol squeeze).
+atr14 = ta.atr(14)
+atr3  = ta.atr(3)
+vol_squeeze = atr3 < atr14 * 0.7
+
+plotshape(in_window and vol_squeeze,
+     title="Vol Squeeze",
+     style=shape.xcross,
+     location=location.belowbar,
+     color=col_vol_bg, size=size.tiny)
+
+// ─── ATR BAND (dynamic expected range) ───────────────────────
+// Wider band on event day to show expected move visually.
+event_mult = is_event_bar ? 3.0 : 1.0
+upper_atr  = close + atr14 * event_mult
+lower_atr  = close - atr14 * event_mult
+
+p_up = plot(is_event_bar ? upper_atr : na, "ATR Upper", color.new(col_bull, 70), 1, plot.style_linebr)
+p_dn = plot(is_event_bar ? lower_atr : na, "ATR Lower", color.new(col_bear, 70), 1, plot.style_linebr)
+fill(p_up, p_dn, color.new(col_vol_bg, 90), title="ATR Event Range")
+
+// ─── INFO TABLE ──────────────────────────────────────────────
+var table t = table.new(position.top_right, 2, 6,
+     bgcolor=color.new(color.black, 75), border_width=0, frame_width=0)
+
+if barstate.islast
+    table.cell(t, 0, 0, "EVENT",        text_color=color.gray,  text_size=size.small)
+    table.cell(t, 1, 0, event_name,     text_color=color.white, text_size=size.small)
+    table.cell(t, 0, 1, "SIGNAL",       text_color=color.gray,  text_size=size.small)
+    table.cell(t, 1, 1, signal_input,   text_color=signal_color,text_size=size.small)
+    table.cell(t, 0, 2, "CONF",         text_color=color.gray,  text_size=size.small)
+    table.cell(t, 1, 2, str.tostring(conf_input) + "%", text_color=color.white, text_size=size.small)
+    table.cell(t, 0, 3, "AVG MOVE",     text_color=color.gray,  text_size=size.small)
+    table.cell(t, 1, 3, "±" + str.tostring(avg_move_pct) + "%", text_color=col_vol_bg, text_size=size.small)
+    table.cell(t, 0, 4, "ATR(14)",      text_color=color.gray,  text_size=size.small)
+    table.cell(t, 1, 4, str.tostring(math.round(atr14, 4)), text_color=color.white, text_size=size.small)
+    table.cell(t, 0, 5, "VOL SQUEEZE",  text_color=color.gray,  text_size=size.small)
+    table.cell(t, 1, 5, vol_squeeze ? "YES" : "NO",
+         text_color = vol_squeeze ? col_vol_bg : color.gray, text_size=size.small)
+
+// ─── ALERT CONDITIONS ────────────────────────────────────────
+alertcondition(is_event_bar and signal_input == "BULLISH_USD",
+     title="Bullish USD Signal", message="MACRO AGENT: {{ticker}} BULLISH_USD — " + event_name)
+alertcondition(is_event_bar and signal_input == "BEARISH_USD",
+     title="Bearish USD Signal", message="MACRO AGENT: {{ticker}} BEARISH_USD — " + event_name)
+alertcondition(in_window and vol_squeeze,
+     title="Pre-Event Vol Squeeze", message="VOL SQUEEZE detected in {{ticker}} event window")

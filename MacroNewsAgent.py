@@ -12,7 +12,7 @@ Requirements:
 
 .env file:
     FRED_API_KEY=your_fred_key
-    ANTHROPIC_API_KEY=your_claude_key
+    GROQ_API_KEY=your_grok_key
     TV_WEBHOOK_URL=https://webhook.site/your-id   # or your server URL
     TV_ALERT_SECRET=your_tradingview_webhook_secret
 """
@@ -30,7 +30,7 @@ log = logging.getLogger("MacroAgent")
 
 # ─── CONFIG ─────────────────────────────────────────────────────────────────
 FRED_API_KEY    = os.getenv("FRED_API_KEY")
-ANTHROPIC_KEY   = os.getenv("ANTHROPIC_API_KEY")
+GROQ_API_KEY   = os.getenv("GROQ_API_KEY")
 TV_WEBHOOK_URL  = os.getenv("TV_WEBHOOK_URL")          # your TradingView webhook endpoint
 TV_SECRET       = os.getenv("TV_ALERT_SECRET", "")
 

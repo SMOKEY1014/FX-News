@@ -1,5 +1,5 @@
 fredapi
 requests
-anthropic
+groq
 python-dotenv
 schedule

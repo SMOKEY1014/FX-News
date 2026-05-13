@@ -119,16 +119,35 @@ FORECASTS = {
 def get_latest_actual(event_key: str):
     cfg = EVENTS[event_key]
     try:
+        # 400 days needed: pct_change(periods=12) on monthly data requires
+        # 13+ months of history. 90 days left an empty series after dropna(),
+        # causing "single positional indexer is out-of-bounds" on iloc[-1].
         series = fred.get_series(
             cfg["series_id"],
-            observation_start=(datetime.today() - timedelta(days=90)).strftime("%Y-%m-%d"),
+            observation_start=(datetime.today() - timedelta(days=400)).strftime("%Y-%m-%d"),
         )
+
+        if series is None or len(series) == 0:
+            log.error(f"FRED returned empty series for {event_key}")
+            return None
+
         if cfg["transform"] == "pc1":
             pct = series.pct_change(periods=12) * 100
-            return round(float(pct.dropna().iloc[-1]), 2)
+            pct = pct.dropna()
+            if len(pct) == 0:
+                log.error(f"YoY calc empty for {event_key} — not enough history even at 400 days")
+                return None
+            return round(float(pct.iloc[-1]), 2)
+
         elif cfg["transform"] == "chg":
-            return round(float(series.diff().dropna().iloc[-1]) / 1000, 1)
+            diff = series.diff().dropna()
+            if len(diff) == 0:
+                log.error(f"Diff calc empty for {event_key}")
+                return None
+            return round(float(diff.iloc[-1]) / 1000, 1)
+
         return round(float(series.iloc[-1]), 2)
+
     except Exception as e:
         log.error(f"FRED fetch failed for {event_key}: {e}")
         return None
